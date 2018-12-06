@@ -1,0 +1,10 @@
+form {
+	width: 35%;
+	padding-left: 50px;
+}
+
+FormControl {
+	margin-bottom: 25px;
+}
+
+.inline{display:flex; flex-direction:row; padding:0px;}

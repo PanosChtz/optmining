@@ -1,0 +1,22 @@
+form {
+	max-width: 500px;
+	min-width: 500px;
+	padding-left: 10px;
+}
+
+FormControl {
+	margin-bottom: 25px;
+	padding-bottom: 25px;
+}
+
+Button {
+	margin-right: 10px;
+}
+
+.hash-select{max-width:75px; margin-left: 20px;}
+.inline{display:flex; flex-direction:row; padding-left:0px; margin-left:0px;}
+.narrow-form1{max-width: 100px; min-width: 100px;}
+.narrow-form2{max-width: 200px; min-width: 200px;}
+.narrow-form3{max-width: 300px; min-width: 300px;}
+.narrow-form4{max-width: 400px; min-width: 400px;}
+.left-margined{margin-left: 20px;}

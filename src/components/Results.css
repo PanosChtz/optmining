@@ -1,0 +1,16 @@
+body {
+  margin: 0;
+}
+
+#container {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  padding: 10px;
+  width: 800px;
+  height: 800px;
+  background-color: #fff;
+}
+
+.narrow{max-width: 325px; min-width: 325px; margin-left: 75px;}
+.inline{display:flex; flex-direction:row; padding-left:0px; margin-left:0px;}
