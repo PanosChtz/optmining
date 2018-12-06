@@ -1,3 +1,5 @@
+A Node.js web application with both a server side API and a client side built with react-bootstrap and recharts.
+
 Main Files:
 
 - optimize.py: Optimization algorithm that determines optimize mining distribution
