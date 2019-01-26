@@ -9,6 +9,7 @@ export default class CustomNavBar extends Component {
 			<Navbar>
 				<Nav>
 					<NavItem eventKey={1} href="/" to="/"> Home </NavItem>
+					<NavItem eventKey={2} href="/about" to="/about"> About </NavItem>
 				</Nav>
 			</Navbar>
 		)

@@ -1,7 +1,7 @@
 import React, { Component } from 'react';
 import Home from './Home'
 import { Link } from 'react-router-dom';
-import { Form, FormGroup, FormControl, ControlLabel, HelpBlock, Checkbox, Button, ButtonToolbar, DropdownButton, MenuItem, Radio } from 'react-bootstrap';
+import { OverlayTrigger, Tooltip, Form, FormGroup, FormControl, ControlLabel, HelpBlock, Checkbox, Button, ButtonToolbar, DropdownButton, MenuItem, Radio } from 'react-bootstrap';
 import './MainForm.css';
 import exec from 'child_process';
 import ReactDOM from 'react-dom';
@@ -115,7 +115,7 @@ export default class MainForm extends Component {
 
 		/**** send to optimize and forward results to Return.jsx **********/
 		var poolData = '';
-		const data = [];
+		var data = [];
 
 		/****************************** SINGLE CURRENCY SOLVE ******************************/
 		if(!this.state.isMultiCurr && !this.state.isMultiAlgo) { // single currency
@@ -131,6 +131,7 @@ export default class MainForm extends Component {
 					data.push({name: n});
 				data.push({name: "Solo"});
 
+				console.log(poolData);
 				fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/single', {
 					method: 'POST',
 					headers: {
@@ -161,8 +162,6 @@ export default class MainForm extends Component {
 									val = Math.round(Number(val)*100)/100;
 									data[i]["Hash Power"] = val;
 									i++;
-									console.log(val);
-									console.log(hash);
 								}
 
 								/* send results graph data */
@@ -184,13 +183,16 @@ export default class MainForm extends Component {
 			}
 
 			/* add fake pool for solo mine only currencies */
+			var fake_pools = 0;
 			for(var n in selected_currencies)
 				if(found_currencies.indexOf(n) < 0) {
 					var curr = this.state.currencies[n];
 					poolData += 1000+','+0.99+','+curr.block_reward*curr.prices.USD+','+curr.block_time+','+curr.total_hash+',';
+					fake_pools++;
 				}
-			poolData = poolData.substring(0, poolData.length-1); // remove last ,
 
+			poolData = poolData.substring(0, poolData.length-1); // remove last ,
+			console.log(poolData);
 		  fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multicurr', {
 				method: 'POST',
 				headers: {
@@ -213,14 +215,22 @@ export default class MainForm extends Component {
 						  /* maps the hash rates to their respective pools */
 							var i = 0;
 							for(var name in selected_pools) {
-								data = this.addToData(data, selected_pools[n].currency, name, hashes[i], hash, conversion);
+								data.push(this.formatData(selected_pools[name].currency, name, hashes[i], conversion));
 								i++;
 							}
-							/* map left over values as solos */
-							for(var curr in selected_currencies) {
-								if(i < hashes.length)
-									data = this.addToData(data, curr, 'Solo '+ curr, hashes[i], hash, conversion);
+
+							// skip over fake pools
+							while(fake_pools > 0) {
+								fake_pools--;
 								i++;
+							}
+
+							/* map left over values as solos */
+							for(var c in selected_currencies) {
+								if(i < hashes.length) {
+									data.push(this.formatData(c, 'Solo '+ c, hashes[i], conversion));
+									i++;
+								}
 							}
 
 							/* send results graph data */
@@ -243,14 +253,17 @@ export default class MainForm extends Component {
 			}
 
 			/* add fake pool for solo mine only currencies */
+			var fake_pools = 0;
 			for(var n in selected_currencies)
 				if(found_currencies.indexOf(n) < 0) {
 					var curr = this.state.currencies[n];
 					var h = hash[curr.algo];
 					poolData += 1000+','+0.99+','+curr.block_reward*curr.prices.USD+','+curr.block_time+','+curr.total_hash+','+h+',';
-				}
-			poolData = poolData.substring(0, poolData.length-1); // remove last ,
+					fake_pools++;
+			}
 
+			poolData = poolData.substring(0, poolData.length-1); // remove last ,
+			console.log(poolData);
 			fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multialgo', {
 				method: 'POST',
 				headers: {
@@ -276,21 +289,28 @@ export default class MainForm extends Component {
 						conversion = check;
 					else if(conversion == "TH/s" && check == "PH/s")
 						conversion = check;
-					console.log(conversion);
 				}
 
 				/* maps the hash rates to their respective pools */
 				var i = 0;
 				for(var name in selected_pools) {
-					var curr = selected_pools[name].currency;
-					data = this.addToData(data, curr, name, hashes[i], hash[ReactDOM.findDOMNode(this.refs["Hash_"+curr.algo]).value.trim()], conversion);
+					var c = selected_pools[name].currency;
+					data.push(this.formatData(c, name, hashes[i], conversion));
 					i++;
 				}
+
+				// skip over fake pools
+				while(fake_pools > 0) {
+					fake_pools--;
+					i++;
+				}
+
 				/* map left over values as solos */
-				for(var curr in selected_currencies) {
-					if(i < hashes.length)
-						data = this.addToData(data, curr, 'Solo '+curr, hashes[i], hash[ReactDOM.findDOMNode(this.refs["Hash_"+this.state.currencies[curr].algo]).value.trim()], conversion);
-				  i++;
+				for(var c in selected_currencies) {
+					if(i < hashes.length) {
+						data.push(this.formatData(c, 'Solo '+c, hashes[i], conversion));
+				  	i++;
+					}
 				}
 
 				/* send results graph data */
@@ -304,7 +324,7 @@ export default class MainForm extends Component {
 
 	/* format data returned from optimize.py into array of hash rates */
 	parseResponse = (responseData) => {
-		responseData = (responseData.solved).replace('[','').replace(']','');
+		responseData = (responseData.solved).replace('[','').replace(']','').replace('\n','');
 		var hashes = responseData.split(' ');
 		for(var i = hashes.length - 1; i >= 0; i--)
 				if(hashes[i].length < 2)
@@ -312,18 +332,14 @@ export default class MainForm extends Component {
 		return hashes;
 	}
 
-	addToData = (data, curr, name, val, hash, conversion) => {
-			if(val > hash) val = hash;
-		  else if(val < 0) val = 0;
-
+	formatData = (curr, name, val, conversion) => {
+		  if(val < 0) val = 0;
 			if(conversion == "TH/s")	val /= 1000;
 			else if(conversion == "PH/s") val /= 1000000;
 			val = Math.round(Number(val)*100)/100;
-
 			var d = {name:name};
 			d[curr] = val;
-			data.push(d);
-			return data;
+			return d;
 	}
 
 	/* button asking to add custom pool */
@@ -535,7 +551,12 @@ export default class MainForm extends Component {
 				<Button onClick={() => this.onAddPoolConfirm()}> Add Pool</Button>
 				<Button onClick={() => this.onAddPoolCancel()}> Cancel</Button>
 			</FormGroup>
-		var hidden_custom_pool_component = <FormGroup> <Button onClick={() => this.onAddPool()}> Add Pool</Button> </FormGroup>
+		var hidden_custom_pool_component =
+		<FormGroup>
+		<OverlayTrigger trigger="hover" placement="top" overlay=<Tooltip>add a custom pool</Tooltip>>
+		<Button onClick={() => this.onAddPool()}> Add Pool</Button>
+		</OverlayTrigger>
+		</FormGroup>
 
 		/* add pool element to add new pool */
 		var add_pool_component = hidden_custom_pool_component;
@@ -554,7 +575,9 @@ export default class MainForm extends Component {
 					</div> <br/>
 					<div className='inline'>
 					<div className='narrow-form3'><ControlLabel>Price (USD)</ControlLabel></div>
+					<OverlayTrigger trigger="hover" placement="top" overlay=<Tooltip>coins rewarded per block</Tooltip>>
 					<div className='narrow-form2'> <div className='left-margined'> <ControlLabel>Reward (Coins)</ControlLabel> </div> </div>
+					</OverlayTrigger>
 					</div>
 					<div className='inline'>
 					<div className='narrow-form3'> <FormControl type="text" ref="Custom_Currency_Price"/></div>
@@ -584,13 +607,31 @@ export default class MainForm extends Component {
 					</FormControl>
 					</div> </div> <br />
 
-					<div className='narrow-form1'><ControlLabel>Chart Color (Hex)</ControlLabel></div>
-					<div className='narrow-form1'> <FormControl type="text" ref="Custom_Currency_Color"/></div> <br/>
+					<div className='narrow-form1'><ControlLabel>Currency Color</ControlLabel></div>
+					<div className='narrow-form1'>
+					<FormControl componentClass="select" placeholder="GH/s" ref="Custom_Currency_Color">
+						<option value="#100c08">Black</option>
+					  <option value="#4682b4">Blue</option>
+						<option value="#a67b5b">Brown</option>
+						<option value="#b1b3b0">Gray</option>
+						<option value="#2bd849">Green</option>
+						<option value="#ed872d">Orange</option>
+						<option value="#ff9ecb">Pink</option>
+						<option value="#8a2be2">Purple</option>
+						<option value="#cf0000">Red</option>
+						<option value="#eff676">Yellow</option>
+					</FormControl>
+					</div><br/>
 
 					<Button onClick={() => this.onAddCurrencyConfirm()}> Add Currency</Button>
 					<Button onClick={() => this.onAddCurrencyCancel()}> Cancel</Button>
 				</FormGroup>
-		var hidden_custom_currency_component = <FormGroup> <Button onClick={() => this.onAddCurrency()}> Add Currency</Button> </FormGroup>
+		var hidden_custom_currency_component =
+		<FormGroup>
+		<OverlayTrigger trigger="hover" placement="top" overlay=<Tooltip>add a custom currency</Tooltip>>
+		<Button onClick={() => this.onAddCurrency()}> Add Currency</Button>
+		</OverlayTrigger>
+		</FormGroup>
 
 		var hash_component = [];
 		if(!this.state.isMultiAlgo) {
@@ -643,15 +684,17 @@ export default class MainForm extends Component {
 		var currency_boxes = [];
 		for(var name in this.state.currencies) {
 			currency_boxes.push(
-			<> <Checkbox inline
+			<>
+			<Checkbox inline
 			  		id = {name}
 	          checked = {this.state.currencies[name].checked}
 	          onChange = {this.onCurrencyBoxChange(name)}
-	    > {name} </Checkbox></>);
+	    > {name} </Checkbox>
+			</>
+			);
       cnt1++;
      	if(cnt1 == 5) { currency_boxes.push(<><br/></>); cnt1 = 0; } // move to new line after 5 elements for formatting
 		}
-
 		var cnt2 = 0;
 		var pool_boxes = [];
 		for(var name in this.state.pools) {
@@ -682,7 +725,9 @@ export default class MainForm extends Component {
 					{hash_component}
 
 	        <FormGroup>
-	          <ControlLabel>Risk Aversion</ControlLabel>
+					<OverlayTrigger trigger="hover" placement="top" overlay=<Tooltip>risk factor of inconsistent reward</Tooltip>>
+					<div className='narrow-form2'> <ControlLabel>Risk Aversion</ControlLabel></div>
+					</OverlayTrigger>
 	          <div className='narrow-form2'> <FormControl type="text" ref="Risk"/></div>
 	          <HelpBlock>Suggested range 1-10.</HelpBlock>
 	        </FormGroup>

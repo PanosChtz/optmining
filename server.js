@@ -152,14 +152,12 @@ function update_data(symbol) {
 		res.on('end', function(){
 			var data = JSON.parse(body);
 			if(data["Success"] == true) {
-				data = data["Data"];
-		    	ref.child(symbol).set({
-			    	name: data["CoinName"],
-			    	algo: data["Algorithm"],
-            block_time: data["BlockTimeInSeconds"],
-					  block_reward: data["BlockReward"]
-				});
-		 	}
+				  data = data["Data"];
+		    	ref.child(symbol+'/name').set(data["CoinName"]);
+          ref.child(symbol+'/algo').set(data["Algorithm"]);
+          ref.child(symbol+'/block_time').set(data["BlockTimeInSeconds"]);
+          ref.child(symbol+'/block_reward').set(data["BlockReward"]);
+      }
 		 	else { console.log('*** failed api call to coinwarz.com ***'); }
 		 });
 	});
