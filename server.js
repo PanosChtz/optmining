@@ -63,7 +63,8 @@ app.post('/solve/single', function(req, res) {
 	    req.body.pools,
 	    req.body.rho,
 	    req.body.R,
-	    req.body.lA
+	    req.body.lA,
+      req.body.PPS
   	]);
 
   	python.stdout.on('data', function (data) {
@@ -77,11 +78,13 @@ app.post('/solve/single', function(req, res) {
 app.post('/solve/multicurr', function(req, res) {
   console.log('starting multi curr solve...');
 	var spawn = require("child_process").spawn;
+    console.log(req.body.PPS);
   	var python = spawn('python', ["./optimize.py",
       "multicurr",
 	    req.body.pools,
 	    req.body.rho,
-	    req.body.lA
+	    req.body.lA,
+      req.body.PPS
   	]);
 
   	python.stdout.on('data', function (data) {
@@ -99,6 +102,7 @@ app.post('/solve/multialgo', function(req, res) {
       "multialgo",
 	    req.body.pools,
 	    req.body.rho,
+      req.body.PPS
   	]);
 
   	python.stdout.on('data', function (data) {

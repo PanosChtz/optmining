@@ -43,10 +43,11 @@ export default class Home extends Component {
         if(this.props.type == "single") {
           for(var n in this.props.keys)
             bars.push(<Bar dataKey={n} fill={this.props.keys[n]}/>)
+          var width = (poolData.length*150) + 500;
           return(
             <div>
-            <BarChart width={800} height={400} data={this.props.data} margin={{top: 5, right: 0, left: 50, bottom: 50}}>
-                    <CartesianGrid strokeDasharray="5 5"/>
+            <BarChart width={width} height={400} data={this.props.data} margin={{top: 5, right: 0, left: 50, bottom: 50}}>
+                    <CartesianGrid strokeDasharray="10 10"/>
                     <XAxis dataKey="name"/>
                     <YAxis/>
                     <Tooltip/>
@@ -61,17 +62,19 @@ export default class Home extends Component {
         else if(this.props.type == "multicurr" || this.props.type == "multialgo") {
           for(var n in this.props.keys)
             bars.push(<Bar dataKey={n} stackId="a" fill={this.props.keys[n]} />)
+          var width = (poolData.length*150) + 500;
+          console.log(width);
           return (
             <div>
-          	<BarChart width={800} height={400} data={this.props.data} margin={{top: 5, right: 0, left: 50, bottom: 50}}>
-             <CartesianGrid strokeDasharray="5 5"/>
+          	<BarChart width={width} height={400} data={this.props.data} margin={{top: 5, right: 0, left: 50, bottom: 50}}>
+             <CartesianGrid strokeDasharray="10 10"/>
              <XAxis dataKey="name"/>
              <YAxis/>
              <Tooltip/>
              <Legend />
              {bars}
             </BarChart>
-            {detailed_data}
+            <div className='left-push'>{detailed_data}</div>
             </div>
           );
         }

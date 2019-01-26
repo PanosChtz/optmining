@@ -335,30 +335,33 @@ if __name__ =='__main__':
     	poolData = []
     	for i in range (len(data)):
     		if i % 2 == 0:
-    			poolData.append((data[i], data[i+1]));
+    			poolData.append((data[i], data[i+1]))
     	rho = float(sys.argv[3])
     	R = float(sys.argv[4])
     	lA = float(sys.argv[5])
-    	print(solvePools(poolData, rho, R, lA))
+        pps = (sys.argv[6] == 'true')
+    	print(solvePools(poolData, rho, R, lA, pps))
 
     elif sys.argv[1] == "multicurr": # multi currencies, single PoW
         data = map(float, sys.argv[2].split(','))
         poolData = []
         for i in range (len(data)):
             if i % 5 == 0:
-                poolData.append((data[i], data[i+1], data[i+2], data[i+3], data[i+4]));
+                poolData.append((data[i], data[i+1], data[i+2], data[i+3], data[i+4]))
         rho = float(sys.argv[3])
         lA = float(sys.argv[4])
-        print(solvePoolsMultiCurr(poolData, rho,lA));
+        pps = (sys.argv[5] == 'true')
+        print(solvePoolsMultiCurr(poolData, rho, lA)) # add pps as last arg when available
 
     elif sys.argv[1] == "multialgo":
         data = map(float, sys.argv[2].split(','))
         poolData = []
         for i in range (len(data)):
             if i % 6 == 0:
-                poolData.append((data[i], data[i+1], data[i+2], data[i+3], data[i+4], data[i+5]));
+                poolData.append((data[i], data[i+1], data[i+2], data[i+3], data[i+4], data[i+5]))
         rho = float(sys.argv[3])
-        print(solvePoolsMultiAlg(poolData, rho))
+        pps = (sys.argv[4] == 'true')
+        print(solvePoolsMultiAlg(poolData, rho)) # add pps as last arg when available
     sys.stdout.flush()
 
 

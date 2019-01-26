@@ -7,274 +7,323 @@ import exec from 'child_process';
 import ReactDOM from 'react-dom';
 
 export default class MainForm extends Component {
-	colors = {"BTC": "#82ca9d", "BCH":"#ffcc00", "DASH":"#80bfff"}; //TODO REMOVE, ADD TO COLORS
-
 	state = {
 		currencies: {}, // all pulled currencies from API and user's entered custom currencies
 		pools: {}, // all pulled pools from API and user's entered custom pools
 		algos: {}, // all pulled algorithm data from API
-		hash: "", // the user's entered hash rate, tied with conversion
-		conversion: "GH/s", // conversion rate for user's entered hash rate
-		customPoolConversion: "GH/s", // custom pool conversion rate of pool user is currently adding
-		customPoolCurrency: "BTC",
-		customCurrencyAlgo: "SHA-256",
-		risk: "", // risk aversion factor entered by user
 		showCustomPoolOptions: false, // if true show options for adding a custom pool, otherwise show the "add pool" button
-		showCustomCurrencyOptions: false // if true show options for adding a custom currency, otherwise show the "add currency" button
+		showCustomCurrencyOptions: false, // if true show options for adding a custom currency, otherwise show the "add currency" button
+		isMultiCurr: false, // checks if selected currencies are more than one currency
+		isMultiAlgo: false // checks if selected currencies are multi-algorithm or not
+	}
+
+	convertHash(hash, cond) {
+		if(hash < 0)
+			hash = 0;
+		else if(cond == "TH/s")
+			hash *= 1000;
+		else if(cond == "PH/s")
+			hash *= 1000000;
+		else if(cond == "EH/s")
+			hash *= 1000000000;
+		return hash;
 	}
 
 	/* on submit button press, call solve from api depending on selections */
 	onSubmit = () => {
+		var risk;
+		var hash;
+		var conversion;
+		var pps;
+		var error = false;
+
 		/* find all selected currencies and pools */
+		var pps_pool = [];
+		var algos = [];
 		var selected_currencies = {};
 		var selected_pools = {};
+		var colors = {};
+
 		for(var n in this.state.currencies)
-			if(this.state.currencies[n].checked)
+			if(this.state.currencies[n].checked) {
 				selected_currencies[n] = this.state.currencies[n];
+				colors[n] = this.state.currencies[n].color;
+			}
+
 		for(var n in this.state.pools)
 			if(this.state.pools[n].checked)
-					selected_pools[n] = this.state.pools[n];
+					if(!this.state.pools[n].pps)
+						selected_pools[n] = this.state.pools[n];
+					else { // skip pps pool for now
+						if(pps_pool.length == 0 || this.state.pools[pps_pool[0]].fee > this.state.pools[n].fee)
+							pps_pool.push(n);
+					}
 
-		var risk = ReactDOM.findDOMNode(this.refs.Risk).value.trim();
-		var hash = ReactDOM.findDOMNode(this.refs.Hash).value.trim();
+		if(this.state.isMultiAlgo) {
+			for(var n in this.state.currencies)
+				if(this.state.currencies[n].checked && algos.indexOf(this.state.currencies[n].algo) < 0)
+					algos.push(this.state.currencies[n].algo);
+		}
 
-		// validate all inputs
-		if(JSON.stringify(selected_currencies) == JSON.stringify({}))
-			alert("Please select atleast one cryptocurrency.");
-		else if(JSON.stringify(selected_pools) == JSON.stringify({}))
-			alert("Please select atleast one mining pool.");
-		else if(hash == "" || isNaN(hash) || hash < 0 || hash > 99999999999)
-			alert("Please enter a valid hash power.");
-		else if(this.state.conversion.length < 2)
-			alert("Please select a hash power unit.");
-		else if(risk == "" || isNaN(risk) || risk < 0)
-			alert("Please enter a valid risk.");
+		// calculate and check risk
+		risk = ReactDOM.findDOMNode(this.refs.Risk).value.trim();
+		risk = risk*0.0001;
+		if(risk == 0)
+			risk = 0.0000000000001;
+		if(risk == "" || isNaN(risk) || risk < 0) {
+			alert("Please enter a valid risk value.");
+			error = true;
+		}
 
-		/**** send to optimize and forward results to Return.jsx **********/
-		else {
-				// temp, sets first selected_currencies to greater than 0
-				var reward = selected_currencies[Object.keys(selected_currencies)[0]].block_reward * selected_currencies[Object.keys(selected_currencies)[0]].prices.USD;
-				risk = risk*0.0001;
-				// convert hashrate if needed
-				if(this.state.conversion == "TH/s")
-					hash *= 1000;
-				else if(this.state.conversion == "PH/s")
-					hash *= 1000000;
-
-				var poolData = '';
-				const data = [];
-
-				/** SINGLE CURRENCY SOLVE **/
-				if(Object.keys(selected_currencies).length == 1) { // single currency
-						/* format all data arguments for optimize */
-						for(var n in selected_pools)
-							poolData += selected_pools[n].hash+','+selected_pools[n].fee+',';
-						poolData = poolData.substring(0, poolData.length-1); // remove last ,
-						for(var n in selected_pools)
-							data.push({name: n});
-						data.push({name: "Solo"});
-						/* call single currency solve with arguments */
-						fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/single', {
-							method: 'POST',
-							headers: {
-							  'Accept': 'application/json',
-							  'Content-Type': 'application/json',
-							},
-							body: JSON.stringify({
-							  pools: poolData,
-							  rho: risk, //risk aversion
-							  R: reward, //block reward
-							  lA: hash //hash power
-							})
-						})
-						.then((response) => response.json())
-				    .then((responseData) => {
-										/* format data returned from optimize.py into array of hash rates */
-										responseData = (responseData.solved).replace('[','').replace(']','');
-										var hashes = responseData.split(' ');
-										for(var i = hashes.length - 1; i >= 0; i--)
-										    if(hashes[i].length < 2)
-										       hashes.splice(i, 1);
-										/* maps the hash rates to their respective pools */
-										var i = 0;
-										while(i < hashes.length) {
-											var n = hashes[i];
-											// convert hash rate if needed
-											if(n < 0) n = 0;
-											if(this.state.conversion == "TH/s")	n /= 1000;
-											else if(this.state.conversion == "PH/s") n /= 1000000;
-											n = Math.round(Number(n)*100)/100;
-											data[i]["Hash Power"] = n;
-											i++;
-										}
-										/* updates results graph data */
-										this.props.updateResults("single", data, {"Hash Power": "#82ca9d"}, selected_currencies, selected_pools);
-				    }).catch((error) => {
-							console.error(error);
-							alert("There was an error contacting the server. Please inform the web admin.");
-						});
-				}
-
-				/** MULTICURRENCY SOLVE **/
-				else { // multiple currencies to process
-						var lastAlgo = "";
-						var multiAlgo = false;
-						for(var n in selected_currencies) {
-							if(lastAlgo == "")
-								lastAlgo = selected_currencies[n].algo;
-							else if(selected_currencies[n].algo.toUpperCase() != lastAlgo) {
-								multiAlgo = true;
-								break;
-							}
-						}
-
-						if(!multiAlgo) { // use multiple currency call and formatting
-							/* format all data arguments for optimize */
-							for(var n in selected_pools) {
-								var curr = selected_pools[n].currency;
-								var block_reward = this.state.currencies[curr].block_reward*this.state.currencies[curr].prices.USD;
-								var block_time = this.state.currencies[curr].block_time;
-								var total_hash = this.state.currencies[curr].total_hash;
-								poolData += selected_pools[n].hash+','+selected_pools[n].fee+','+block_reward+','+block_time+','+total_hash+',';
-							}
-							poolData = poolData.substring(0, poolData.length-1); // remove last ,
-
-							console.log(poolData);
-							fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multicurr', {
-								method: 'POST',
-								headers: {
-								  'Accept': 'application/json',
-								  'Content-Type': 'application/json',
-								},
-								body: JSON.stringify({
-								  pools: poolData, //TODO FORMAT DATA FOR MULTICURR
-								  rho: risk, //risk aversion
-								  lA: hash //hash power
-								})
-							})
-							.then((response) => response.json())
-					    .then((responseData) => {
-											console.log(responseData);
-											responseData = (responseData.solved).replace('[','').replace(']','');
-											var hashes = responseData.split(' ');
-											for(var i = hashes.length - 1; i >= 0; i--)
-													if(hashes[i].length < 2)
-														 hashes.splice(i, 1);
-
-											var i = 0;
-											for(var n in selected_pools) {
-												var curr = selected_pools[n].currency;
-												var d = {name:n};
-
-												var n = hashes[i];
-												if(n < 0) n = 0;
-												if(this.state.conversion == "TH/s")	n /= 1000;
-												else if(this.state.conversion == "PH/s") n /= 1000000;
-												n = Math.round(Number(n)*100)/100;
-												d[curr] = n;
-												data.push(d);
-												i++;
-											}
-
-											for(var c in selected_currencies) {
-												if(i < hashes.length) {
-													var n = hashes[i];
-													if(n < 0) n = 0;
-													if(this.state.conversion == "TH/s")	n /= 1000;
-													else if(this.state.conversion == "PH/s") n /= 1000000;
-													n = Math.round(Number(n)*100)/100;
-
-													var name = 'Solo '+c;
-													var d = {name:name};
-													d[c] = n;
-													data.push(d);
-													i++;
-												}
-											}
-
-											console.log(data);
-											this.props.updateResults("multicurr", data, this.colors,selected_currencies, selected_pools);
-					    }).catch((error) => {
-								console.error(error);
-								alert("There was an error contacting the server. Please inform the web admin.");
-							});
-						}
-
-						/** MULTI ALGO SOLVE **/
-						else { // use multiple algorithm call and formatting
-							/* format all data arguments for optimize */
-							for(var n in selected_pools) {
-								var curr = selected_pools[n].currency;
-								var block_reward = this.state.currencies[curr].block_reward*this.state.currencies[curr].prices.USD;
-								var block_time = this.state.currencies[curr].block_time;
-								var total_hash = this.state.currencies[curr].total_hash;
-								var algo = this.state.currencies[curr].algo;
-								var max_algo = this.state.algos[algo].max;
-								poolData += selected_pools[n].hash+','+selected_pools[n].fee+','+block_reward+','+block_time+','+total_hash+','+max_algo+',';
-							}
-							poolData = poolData.substring(0, poolData.length-1); // remove last ,
-
-							console.log(poolData);
-							fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multialgo', {
-								method: 'POST',
-								headers: {
-								  'Accept': 'application/json',
-								  'Content-Type': 'application/json',
-								},
-								body: JSON.stringify({
-								  pools: poolData, //TODO FORMAT DATA FOR MULTIALGO
-								  rho: risk, //risk aversion
-								})
-							})
-							.then((response) => response.json())
-					    .then((responseData) => {
-								console.log(responseData);
-								responseData = (responseData.solved).replace('[','').replace(']','');
-								var hashes = responseData.split(' ');
-								for(var i = hashes.length - 1; i >= 0; i--)
-										if(hashes[i].length < 2)
-											 hashes.splice(i, 1);
-
-								var i = 0;
-								for(var n in selected_pools) {
-									var curr = selected_pools[n].currency;
-									var d = {name:n};
-
-									var n = hashes[i];
-									if(n < 0) n = 0;
-									if(this.state.conversion == "TH/s")	n /= 1000;
-									else if(this.state.conversion == "PH/s") n /= 1000000;
-									n = Math.round(Number(n)*100)/100;
-									d[curr] = n;
-									data.push(d);
-									i++;
-								}
-
-								for(var c in selected_currencies) {
-									if(i < hashes.length) {
-										var n = hashes[i];
-										if(n < 0) n = 0;
-										if(this.state.conversion == "TH/s")	n /= 1000;
-										else if(this.state.conversion == "PH/s") n /= 1000000;
-										n = Math.round(Number(n)*100)/100;
-
-										var name = 'Solo '+c;
-										var d = {name:name};
-										d[c] = n;
-										data.push(d);
-										i++;
-									}
-								}
-
-								console.log(data);
-								this.props.updateResults("multialgo", data, this.colors,selected_currencies, selected_pools);
-					    }).catch((error) => {
-								console.error(error);
-								alert("There was an error contacting the server. Please inform the web admin.");
-							});
-						}
+		// calculate and check hash and conversion
+		if(!this.state.isMultiAlgo) {
+			hash = ReactDOM.findDOMNode(this.refs.Hash).value.trim();
+			conversion = ReactDOM.findDOMNode(this.refs.Hash_Conversion).value.trim();
+			if(hash == "" || isNaN(hash) || hash < 0 || hash > 99999999999) {
+				alert("Please enter a valid hash power.");
+				error = true;
+			}
+		}
+		else { // multi-algorithm
+			hash = {};
+			conversion = {};
+			for(var a in algos) {
+				var hash_name = "Hash_"+algos[a];
+				var conv_name = "Hash_Conversion_"+algos[a];
+				hash[algos[a]] = ReactDOM.findDOMNode(this.refs[hash_name]).value.trim();
+				conversion[algos[a]] = ReactDOM.findDOMNode(this.refs[conv_name]).value.trim();
+				if(hash[algos[a]] == "" || isNaN(hash[algos[a]]) || hash[algos[a]] < 0 || hash[algos[a]] > 99999999999) {
+					alert("Please enter a valid hash power for each algorithm.");
+					error = true;
 				}
 			}
+		}
+
+		// convert hash / hashes if needed
+		if(!this.state.isMultiAlgo)
+			hash = this.convertHash(hash, ReactDOM.findDOMNode(this.refs.Hash_Conversion).value.trim());
+		else
+			for(var a in algos) {
+				var name = "Hash_Conversion_"+algos[a];
+				hash[algos[a]] = this.convertHash(hash[algos[a]], ReactDOM.findDOMNode(this.refs[name]).value.trim())
+			}
+
+		// add PPS pool last if exists
+		pps = (pps_pool.length > 0);
+		if(pps)
+			selected_pools[n] = this.state.pools[pps_pool[0]];
+
+		/**** send to optimize and forward results to Return.jsx **********/
+		var poolData = '';
+		const data = [];
+
+		/****************************** SINGLE CURRENCY SOLVE ******************************/
+		if(!this.state.isMultiCurr && !this.state.isMultiAlgo) { // single currency
+				var curr = this.state.currencies[Object.keys(selected_currencies)[0]];
+				var reward = curr.block_reward*curr.prices.USD;
+
+				/* format all data arguments for optimize */
+				for(var name in selected_pools)
+					poolData += selected_pools[name].hash+','+selected_pools[name].fee+',';
+				poolData = poolData.substring(0, poolData.length-1); // remove last ,
+
+				for(var n in selected_pools)
+					data.push({name: n});
+				data.push({name: "Solo"});
+
+				fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/single', {
+					method: 'POST',
+					headers: {
+					  'Accept': 'application/json',
+					  'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+					  pools: poolData,
+					  rho: risk, //risk aversion
+					  R: reward, //block reward
+					  lA: hash, //hash power
+						PPS: pps // boolean if pps pool is included
+					})
+				})
+				.then((response) => response.json())
+		    .then((responseData) => {
+					console.log('solved singlecurr optimization: ' + JSON.stringify(responseData));
+								var conversion = ReactDOM.findDOMNode(this.refs.Hash_Conversion).value.trim();
+								var hashes = this.parseResponse(responseData);
+
+								/* maps the hash rates to their respective pools */
+								var i = 0;
+								while(i < hashes.length) {
+									var val = hashes[i];
+									if(val < 0) val = 0;
+									if(conversion == "TH/s")	val /= 1000;
+									else if(conversion == "PH/s") val /= 1000000;
+									val = Math.round(Number(val)*100)/100;
+									data[i]["Hash Power"] = val;
+									i++;
+									console.log(val);
+									console.log(hash);
+								}
+
+								/* send results graph data */
+								this.props.updateResults("single", data, {"Hash Power": "#82ca9d"}, selected_currencies, selected_pools);
+		    }).catch((error) => {
+					console.error(error);
+					alert("There was an error contacting the server. Please inform the web admin.");
+				});
+		}
+
+		/****************************** MULTI CURRENCY SOLVE ******************************/
+		else if(!this.state.isMultiAlgo) {
+			/* format all data arguments for optimize */
+			var found_currencies = [];
+			for(var n in selected_pools) {
+				var curr = this.state.currencies[selected_pools[n].currency];
+				found_currencies.push(selected_pools[n].currency);
+				poolData += selected_pools[n].hash+','+selected_pools[n].fee+','+curr.block_reward*curr.prices.USD+','+curr.block_time+','+curr.total_hash+',';
+			}
+
+			/* add fake pool for solo mine only currencies */
+			for(var n in selected_currencies)
+				if(found_currencies.indexOf(n) < 0) {
+					var curr = this.state.currencies[n];
+					poolData += 1000+','+0.99+','+curr.block_reward*curr.prices.USD+','+curr.block_time+','+curr.total_hash+',';
+				}
+			poolData = poolData.substring(0, poolData.length-1); // remove last ,
+
+		  fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multicurr', {
+				method: 'POST',
+				headers: {
+				  'Accept': 'application/json',
+				  'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+				  pools: poolData, //TODO FORMAT DATA FOR MULTICURR
+				  rho: risk, //risk aversion
+				  lA: hash, //hash power
+					PPS: pps
+				})
+			})
+			.then((response) => response.json())
+	    .then((responseData) => {
+							console.log('solved multicurr optimization: ' + JSON.stringify(responseData));
+							var conversion = ReactDOM.findDOMNode(this.refs.Hash_Conversion).value.trim();
+							var hashes = this.parseResponse(responseData);
+
+						  /* maps the hash rates to their respective pools */
+							var i = 0;
+							for(var name in selected_pools) {
+								data = this.addToData(data, selected_pools[n].currency, name, hashes[i], hash, conversion);
+								i++;
+							}
+							/* map left over values as solos */
+							for(var curr in selected_currencies) {
+								if(i < hashes.length)
+									data = this.addToData(data, curr, 'Solo '+ curr, hashes[i], hash, conversion);
+								i++;
+							}
+
+							/* send results graph data */
+							this.props.updateResults("multicurr", data, colors, selected_currencies, selected_pools);
+	    }).catch((error) => {
+				console.error(error);
+				alert("There was an error contacting the server. Please inform the web admin.");
+			});
+		}
+
+		/****************************** MULTI ALGO SOLVE ******************************/
+		else {
+			/* format all data arguments for optimize */
+			var found_currencies = [];
+			for(var n in selected_pools) {
+				var curr = this.state.currencies[selected_pools[n].currency];
+				var h = hash[curr.algo];
+				found_currencies.push(selected_pools[n].currency);
+				poolData += selected_pools[n].hash+','+selected_pools[n].fee+','+curr.block_reward*curr.prices.USD+','+curr.block_time+','+curr.total_hash+','+h+',';
+			}
+
+			/* add fake pool for solo mine only currencies */
+			for(var n in selected_currencies)
+				if(found_currencies.indexOf(n) < 0) {
+					var curr = this.state.currencies[n];
+					var h = hash[curr.algo];
+					poolData += 1000+','+0.99+','+curr.block_reward*curr.prices.USD+','+curr.block_time+','+curr.total_hash+','+h+',';
+				}
+			poolData = poolData.substring(0, poolData.length-1); // remove last ,
+
+			fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multialgo', {
+				method: 'POST',
+				headers: {
+				  'Accept': 'application/json',
+				  'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+				  pools: poolData, // pool data
+				  rho: risk, //risk aversion
+					PPS: pps
+				})
+			})
+			.then((response) => response.json())
+	    .then((responseData) => {
+				console.log('solved multialgo optimization: ' + JSON.stringify(responseData));
+				var hashes = this.parseResponse(responseData);
+
+				/* finds highest conversion rate used for hash rates */
+				var conversion;
+				for(var a in algos) {
+					var check = ReactDOM.findDOMNode(this.refs["Hash_Conversion_"+algos[a]]).value.trim();
+					if(conversion == null || conversion == "GH/s")
+						conversion = check;
+					else if(conversion == "TH/s" && check == "PH/s")
+						conversion = check;
+					console.log(conversion);
+				}
+
+				/* maps the hash rates to their respective pools */
+				var i = 0;
+				for(var name in selected_pools) {
+					var curr = selected_pools[name].currency;
+					data = this.addToData(data, curr, name, hashes[i], hash[ReactDOM.findDOMNode(this.refs["Hash_"+curr.algo]).value.trim()], conversion);
+					i++;
+				}
+				/* map left over values as solos */
+				for(var curr in selected_currencies) {
+					if(i < hashes.length)
+						data = this.addToData(data, curr, 'Solo '+curr, hashes[i], hash[ReactDOM.findDOMNode(this.refs["Hash_"+this.state.currencies[curr].algo]).value.trim()], conversion);
+				  i++;
+				}
+
+				/* send results graph data */
+				this.props.updateResults("multialgo", data, colors, selected_currencies, selected_pools);
+	    }).catch((error) => {
+				console.error(error);
+				alert("There was an error contacting the server. Please inform the web admin.");
+			});
+		}
+	}
+
+	/* format data returned from optimize.py into array of hash rates */
+	parseResponse = (responseData) => {
+		responseData = (responseData.solved).replace('[','').replace(']','');
+		var hashes = responseData.split(' ');
+		for(var i = hashes.length - 1; i >= 0; i--)
+				if(hashes[i].length < 2)
+					 hashes.splice(i, 1);
+		return hashes;
+	}
+
+	addToData = (data, curr, name, val, hash, conversion) => {
+			if(val > hash) val = hash;
+		  else if(val < 0) val = 0;
+
+			if(conversion == "TH/s")	val /= 1000;
+			else if(conversion == "PH/s") val /= 1000000;
+			val = Math.round(Number(val)*100)/100;
+
+			var d = {name:name};
+			d[curr] = val;
+			data.push(d);
+			return data;
 	}
 
 	/* button asking to add custom pool */
@@ -283,27 +332,25 @@ export default class MainForm extends Component {
 	/* button to add custom pool/confirm custom pool */
 	onAddPoolConfirm = () => {
 		var ps = this.state.pools;
-		var curr = this.state.customPoolCurrency;
+		var curr = ReactDOM.findDOMNode(this.refs.Custom_Pool_Currency).value.trim();
 		var name = ReactDOM.findDOMNode(this.refs.Custom_Pool_Name).value.trim();
 		var hash = ReactDOM.findDOMNode(this.refs.Custom_Pool_Hash).value.trim();
 		var fee = ReactDOM.findDOMNode(this.refs.Custom_Pool_Fee).value.trim()/100;
+		var conversion = ReactDOM.findDOMNode(this.refs.Custom_Pool_Conversion).value.trim();
+		var pps = ReactDOM.findDOMNode(this.refs.Custom_Pool_PPS).value.trim() == 'yes';
+
 		// do error checking all inputs for custom pool
 		if(name == null || name.length < 3) alert("Custom pool name must be atleast 3 characters.");
 		else if(hash == "" || isNaN(hash) || hash < 0 || hash > 99999999999) alert("Please enter a valid pool hash power.");
-		else if(this.state.customPoolConversion.length < 2) alert("Please select a pool hash power unit.");
+		else if(conversion.length < 1) alert("Please select a pool hash power unit.");
 		else if(curr == "") alert("Please select a currency that the pool mines.");
 		else if(fee == "" || isNaN(fee) || fee < 0 || fee > 1) alert("Please enter a valid pool fee.");
 
 		else {
+			var show = this.state.currencies[curr].checked;
 			name += " ("+curr+")";
-			if(this.state.customPoolConversion == "TH/s")
-				hash *= 1000;
-			else if(this.state.customPoolConversion == "PH/s")
-				hash *= 1000000;
-			else if(this.state.customPoolConversion == "EH/s")
-				hash *= 1000000000;
-			this.setState({customPoolConversion: "GH/s"});
-			ps[name] = {hash:hash, fee:fee, curr:curr, checked:true};
+			hash = this.convertHash(hash, conversion);
+			ps[name] = {hash:hash, fee:fee, currency:curr, pps:pps, show:show, checked:false};
 			this.setState({pools: ps});
 			this.setState({showCustomPoolOptions: false});
 		}
@@ -312,7 +359,6 @@ export default class MainForm extends Component {
 	/* button to cancel adding a custom pool */
 	onAddPoolCancel = () => {
 		this.setState({showCustomPoolOptions: false});
-		this.setState({customPoolConversion: "GH/s"});
 	}
 
   /* button asking to add custom currency */
@@ -323,19 +369,25 @@ export default class MainForm extends Component {
 		var cs = this.state.currencies;
 		var name = ReactDOM.findDOMNode(this.refs.Custom_Currency_Name).value.trim();
 		var symbol = ReactDOM.findDOMNode(this.refs.Custom_Currency_Symbol).value.trim();
-		var algo = this.state.customCurrencyAlgo;
+		var algo = ReactDOM.findDOMNode(this.refs.Custom_Currency_Algo).value.trim();
 		var price = ReactDOM.findDOMNode(this.refs.Custom_Currency_Price).value.trim();
 		var reward = ReactDOM.findDOMNode(this.refs.Custom_Currency_Reward).value.trim();
-
+		var total_hash = ReactDOM.findDOMNode(this.refs.Custom_Currency_Total_Hash).value.trim();
+		var block_time = ReactDOM.findDOMNode(this.refs.Custom_Currency_Block_Time).value.trim();
+		var color = ReactDOM.findDOMNode(this.refs.Custom_Currency_Color).value.trim();
 
 		if(name == null || name.length < 3) alert("Currency name must be atleast 3 characters.");
 		else if(symbol == null || symbol.length < 3 || symbol.length > 5) alert("Currency symbol must be between 3 and 5 characters.");
 		else if(algo == null || algo.length < 3) alert("Please enter a valid mining algorithm.");
 		else if(price == "" || isNaN(price) || price < 0) alert("Please enter a valid currency price.");
 		else if(reward == "" || isNaN(reward) || reward < 0) alert("Please enter a valid currency block reward.");
+		else if(total_hash == null || isNaN(total_hash) || total_hash < 0 || total_hash == 0) alert("Please enter a valid total hash rate.");
+		else if(block_time == null || isNaN(block_time) || block_time < 0 || block_time == 0) alert("Please enter a valid block time.");
+		else if(color == null || color.length < 4) alert("Please enter a valid hex color code");
 
 		else {
-				cs[symbol] = {name:name, prices:{USD: price}, block_reward:reward, algo:algo, checked:true};
+				total_hash = this.convertHash(total_hash, ReactDOM.findDOMNode(this.refs.Custom_Currency_Conversion).value.trim());
+				cs[symbol] = {name:name, prices:{USD: price}, block_reward:reward, block_time:block_time, algo:algo, total_hash:total_hash, color:color, checked:false};
 				this.setState({currencies: cs});
 				this.setState({showCustomCurrencyOptions: false});
 		}
@@ -352,15 +404,36 @@ export default class MainForm extends Component {
 			var cs = this.state.currencies;
 			cs[name].checked = !cs[name].checked;
 			this.setState({currencies: cs});
-  		}
+
+			var isMultiA = false;
+			var isMultiC = false;
+
+			var c = 0;
+			var lastAlgo = null;
+
+			for(var n in this.state.currencies)
+				if(this.state.currencies[n].checked) {
+					if(lastAlgo == null) lastAlgo = this.state.currencies[n].algo;
+					else if(lastAlgo != this.state.currencies[n].algo) isMultiA = true;
+					c++;
+				}
+			if(c > 1) isMultiC = true;
+
+			for(var n in this.state.pools)
+				if(this.state.pools[n].currency == name) {
+					this.state.pools[n].show = cs[name].checked;
+					this.state.pools[n].checked = false;
+				}
+			this.setState({isMultiCurr:isMultiC, isMultiAlgo:isMultiA});
+  	}
 	}
 
 	/* a pool checkbox is toggled */
 	onPoolBoxChange(name) {
 	    return (event) => {
-			var ps = this.state.pools;
-			ps[name].checked = !ps[name].checked;
-			this.setState({pools: ps});
+				var ps = this.state.pools;
+				ps[name].checked = !ps[name].checked;
+				this.setState({pools: ps});
   		}
   }
 
@@ -390,6 +463,7 @@ export default class MainForm extends Component {
 	    		var n = name.replace("(dot)",".")
 	    		ps[n] = responseJson[name];
 	    		ps[n].checked = false;
+					ps[n].show = false;
 	    	}
 	    	this.setState({pools: ps});
 	    }).catch((error) => {
@@ -429,24 +503,34 @@ export default class MainForm extends Component {
 				<div className='narrow-form1'><div className='left-margined'><FormControl type="text" ref="Custom_Pool_Fee"/></div></div>
 				</div><br/>
 
-				<ControlLabel>Hash Power ({this.state.customPoolConversion})</ControlLabel>
+				<ControlLabel>Hash Power</ControlLabel>
 				<div className='inline'>
 				<div className='narrow-form3'><FormControl type="text" ref="Custom_Pool_Hash" /></div>
 				<div className='hash-select'>
-				<FormControl componentClass="select" placeholder="GH/s"
-				onChange = {e => this.setState({customPoolConversion: e.target.value})}>
+				<FormControl componentClass="select" placeholder="GH/s" ref="Custom_Pool_Conversion">
 					<option value="GH/s">GH/s</option>
 					<option value="TH/s">TH/s</option>
 					<option value="PH/s">PH/s</option>
 					<option value="EH/s">EH/s</option>
 				</FormControl>
 				</div> </div> <br />
-				<ControlLabel>Currency</ControlLabel>
+
+				<div className='inline'>
+				<div className='narrow-form2'><ControlLabel>Currency</ControlLabel></div>
+				<div className='narrow-form1'><div className='left-margined'><ControlLabel>PPS</ControlLabel></div></div>
+				</div>
+				<div className='inline'>
 				<div className='narrow-form2'>
-				<FormControl componentClass="select" placeholder="BTC"
-				onChange = {e => this.setState({customPoolCurrency: e.target.value})}>
+				<FormControl componentClass="select" placeholder="BTC" ref="Custom_Pool_Currency">
 						{currency_select}
 				</FormControl>
+				</div>
+				<div className='hash-select'>
+				<FormControl componentClass="select" placeholder='false' ref="Custom_Pool_PPS">
+					<option value='no'>False</option>
+					<option value='yes'>True</option>
+				</FormControl>
+				</div>
 				</div><br/>
 				<Button onClick={() => this.onAddPoolConfirm()}> Add Pool</Button>
 				<Button onClick={() => this.onAddPoolCancel()}> Cancel</Button>
@@ -470,22 +554,87 @@ export default class MainForm extends Component {
 					</div> <br/>
 					<div className='inline'>
 					<div className='narrow-form3'><ControlLabel>Price (USD)</ControlLabel></div>
-					<div className='narrow-form2'> <div className='left-margined'> <ControlLabel>Reward</ControlLabel> </div> </div>
+					<div className='narrow-form2'> <div className='left-margined'> <ControlLabel>Reward (Coins)</ControlLabel> </div> </div>
 					</div>
 					<div className='inline'>
 					<div className='narrow-form3'> <FormControl type="text" ref="Custom_Currency_Price"/></div>
 					<div className='narrow-form1'> <div className='left-margined'> <FormControl type="text" ref="Custom_Currency_Reward"/></div></div>
 					</div><br/>
 
-					<ControlLabel>Mining Algorithm</ControlLabel>
-					<div className='narrow-form3'>
-					<FormControl componentClass="select" placeholder="SHA-256" onChange = {e => this.setState({customCurrencyAlgo: e.target.value})}>
+					<div className='inline'>
+					<div className='narrow-form3'><ControlLabel>Mining Algorithm</ControlLabel></div>
+					<div className='left-margined'><div className='narrow-form1'><ControlLabel>Block Time (secs)</ControlLabel></div></div>
+					</div>
+					<div className='inline'>
+					<div className='narrow-form3'><FormControl componentClass="select" placeholder="SHA-256" ref="Custom_Currency_Algo">
 										{algo_select}
-					</FormControl></div> <br/>
+					</FormControl></div>
+					<div className='narrow-form1'><div className='left-margined'><FormControl type="text" ref="Custom_Currency_Block_Time"/></div></div>
+					</div><br/>
+
+					<div className='narrow-form3'><ControlLabel>Currency Total Hash Rate</ControlLabel></div>
+					<div className='inline'>
+					<div className='narrow-form3'><FormControl type="text" ref="Custom_Currency_Total_Hash" /></div>
+					<div className='hash-select'>
+					<FormControl componentClass="select" placeholder="GH/s" ref="Custom_Currency_Conversion">
+						<option value="GH/s">GH/s</option>
+						<option value="TH/s">TH/s</option>
+						<option value="PH/s">PH/s</option>
+						<option value="EH/s">EH/s</option>
+					</FormControl>
+					</div> </div> <br />
+
+					<div className='narrow-form1'><ControlLabel>Chart Color (Hex)</ControlLabel></div>
+					<div className='narrow-form1'> <FormControl type="text" ref="Custom_Currency_Color"/></div> <br/>
+
 					<Button onClick={() => this.onAddCurrencyConfirm()}> Add Currency</Button>
 					<Button onClick={() => this.onAddCurrencyCancel()}> Cancel</Button>
 				</FormGroup>
 		var hidden_custom_currency_component = <FormGroup> <Button onClick={() => this.onAddCurrency()}> Add Currency</Button> </FormGroup>
+
+		var hash_component = [];
+		if(!this.state.isMultiAlgo) {
+			hash_component =
+								<FormGroup>
+				          <ControlLabel>Your Hash Power</ControlLabel>
+									<div className='inline'>
+				          <div className='narrow-form3'> <FormControl inline type="text" ref="Hash"/></div>
+									<div className='hash-select'>
+									<FormControl componentClass="select" placeholder="GH/s" ref="Hash_Conversion">
+										<option value="GH/s">GH/s</option>
+										<option value="TH/s">TH/s</option>
+										<option value="PH/s">PH/s</option>
+									</FormControl>
+									</div> </div>
+				          <HelpBlock>Your total mining hash power.</HelpBlock>
+				        </FormGroup>
+		}
+		else {
+			var algos = [];
+			for(var n in this.state.currencies)
+				if(this.state.currencies[n].checked && algos.indexOf(this.state.currencies[n].algo) < 0)
+					algos.push(this.state.currencies[n].algo);
+
+			for(var a in algos) {
+				var name = "Hash_"+algos[a];
+				var conversion = "Hash_Conversion_"+algos[a];
+				hash_component.push(
+													<FormGroup>
+								          <ControlLabel>Your Hash Power for {algos[a]}</ControlLabel>
+													<div className='inline'>
+								          <div className='narrow-form3'> <FormControl inline type="text" ref={name}/></div>
+													<div className='hash-select'>
+													<FormControl componentClass="select" placeholder="GH/s" ref={conversion}> //TODO ON CHANGE METHOD
+														<option value="GH/s">GH/s</option>
+														<option value="TH/s">TH/s</option>
+														<option value="PH/s">PH/s</option>
+													</FormControl>
+													</div> </div>
+								          <HelpBlock>Your mining hash power for {algos[a]}.</HelpBlock>
+								        </FormGroup>)
+			}
+		}
+
 
 		var add_currency_component = hidden_custom_currency_component;
 		if(this.state.showCustomCurrencyOptions)
@@ -506,13 +655,15 @@ export default class MainForm extends Component {
 		var cnt2 = 0;
 		var pool_boxes = [];
 		for(var name in this.state.pools) {
-			pool_boxes.push(
-			<> <Checkbox inline
-			  		id = {name}
-	          checked = {this.state.pools[name].checked}
-	          onChange = {this.onPoolBoxChange(name)}
-	    > {name} </Checkbox></>);
-	    cnt2++;
+			if(this.state.pools[name].show == true) {
+				pool_boxes.push(
+				<> <Checkbox inline
+				  		id = {name}
+		          checked = {this.state.pools[name].checked}
+		          onChange = {this.onPoolBoxChange(name)}
+		    > {name} </Checkbox></>);
+		    cnt2++;
+			}
 	    if(cnt2 == 2) { pool_boxes.push(<><br/></>); cnt2 = 0; } // move to new line after 3 elements for formatting
 		}
 
@@ -528,30 +679,11 @@ export default class MainForm extends Component {
 
 	        {add_pool_component}
 
-	        <FormGroup>
-	          <ControlLabel>Your Hash Power ({this.state.conversion})</ControlLabel>
-						<div className='inline'>
-	          <div className='narrow-form3'> <FormControl inline type="text" ref="Hash"
-	            value = {this.state.hash}
-	            onChange = {e => this.setState({hash: e.target.value})}
-	          /></div>
-						<div className='hash-select'>
-						<FormControl componentClass="select" placeholder="GH/s"
-						onChange = {e => this.setState({conversion: e.target.value})}>
-							<option value="GH/s">GH/s</option>
-							<option value="TH/s">TH/s</option>
-							<option value="PH/s">PH/s</option>
-						</FormControl>
-						</div> </div>
-	          <HelpBlock>Your total mining hash power.</HelpBlock>
-	        </FormGroup>
+					{hash_component}
 
 	        <FormGroup>
 	          <ControlLabel>Risk Aversion</ControlLabel>
-	          <div className='narrow-form2'> <FormControl type="text" ref="Risk"
-	            value = {this.state.risk}
-	            onChange = {e => this.setState({risk: e.target.value})}
-	          /></div>
+	          <div className='narrow-form2'> <FormControl type="text" ref="Risk"/></div>
 	          <HelpBlock>Suggested range 1-10.</HelpBlock>
 	        </FormGroup>
 
