@@ -132,7 +132,7 @@ export default class MainForm extends Component {
 				data.push({name: "Solo"});
 
 				console.log(poolData);
-				fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/single', {
+				fetch('http://smart-miner.com:5000/solve/single', {
 					method: 'POST',
 					headers: {
 					  'Accept': 'application/json',
@@ -193,7 +193,7 @@ export default class MainForm extends Component {
 
 			poolData = poolData.substring(0, poolData.length-1); // remove last ,
 			console.log(poolData);
-		  fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multicurr', {
+		  fetch('http://smart-miner.com:5000/solve/multicurr', {
 				method: 'POST',
 				headers: {
 				  'Accept': 'application/json',
@@ -264,7 +264,7 @@ export default class MainForm extends Component {
 
 			poolData = poolData.substring(0, poolData.length-1); // remove last ,
 			console.log(poolData);
-			fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/solve/multialgo', {
+			fetch('http://smart-miner.com:5000/solve/multialgo', {
 				method: 'POST',
 				headers: {
 				  'Accept': 'application/json',
@@ -456,7 +456,7 @@ export default class MainForm extends Component {
 	/* on initial load, load in currency and pool data from server api */
   componentDidMount() {
 			/* load currency data from api into state */
-  		fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/api/currencies')
+  		fetch('http://smart-miner.com:5000/api/currencies')
 	    .then((response) => response.json())
 	    .then((responseJson) => {
 	    	var cs = [];
@@ -471,7 +471,7 @@ export default class MainForm extends Component {
 			});
 
 			/* load pool data from api into state */
-	   	fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/api/pools')
+	   	fetch('http://smart-miner.com:5000/api/pools')
 	    .then((response) => response.json())
 	    .then((responseJson) => {
 	    	var ps = [];
@@ -488,7 +488,7 @@ export default class MainForm extends Component {
 			});
 
 			/* load algo data from api into state */
-			fetch('http://ec2-34-229-73-9.compute-1.amazonaws.com:5000/api/algos')
+			fetch('http://smart-miner.com:5000/api/algos')
 			.then((response) => response.json())
 			.then((responseJson) => {
 				this.setState({algos: responseJson});
