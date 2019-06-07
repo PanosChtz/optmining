@@ -3,12 +3,41 @@ const app = express();
 const firebase = require('firebase');
 const https = require('https');
 const bodyParser = require('body-parser');
+const fs = require('fs');
 
 const coinwarz_key = '41f33775cd9549708e1fd9e363f4139d';
 const coinwarz_key2 = '390c182f77b347868f47df6a71b4676d'; // second key for use during testing
 const coinwarz_key3 = 'c2dcd2e34405462f8f4deffb1a27959f'; // third key for use during testing
 
 const symbols = ['BTC', 'ETH', 'BCH', 'LTC', 'XMR', 'DASH', 'ETC', 'ZEC', 'XVG', 'DOGE', 'DGB', 'VTC']; // coin symbols list to pull data for
+
+const fileName = 'extiprecords.txt'
+
+function createFileIfNotExists(filename) {
+  fs.open(filename, 'r', function (err, fd) {
+    if (err) {
+      fs.writeFile(filename, '', function (err) {
+        if (err) {
+          console.log(err)
+        }
+        // file saved
+      })
+    } else {
+      // file exists
+    }
+  })
+}
+
+function getExternalIP(ip, solved) {
+    const fileRecord = `${ip.toString()} ${new Date().toUTCString()} ${solved} \n`
+    fs.appendFile(fileName, fileRecord, function (err) {
+        if (err) throw err
+        console.log('Saved!');
+    });
+}
+
+createFileIfNotExists(fileName);
+
 
 /* configure application configuration */
 app.use(function (req, res, next) {
@@ -66,9 +95,10 @@ app.post('/solve/single', function(req, res) {
 	    req.body.lA,
       req.body.PPS
   	]);
-
+	var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
   	python.stdout.on('data', function (data) {
   		var solved = data.toString()
+		getExternalIP(ip, solved);
     	res.send({solved});
     	console.log({solved});
   	});
@@ -86,9 +116,10 @@ app.post('/solve/multicurr', function(req, res) {
 	    req.body.lA,
       req.body.PPS
   	]);
-
+	var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
   	python.stdout.on('data', function (data) {
   		var solved = data.toString()
+		getExternalIP(ip, solved);
     	res.send({solved});
     	console.log({solved});
   	});
@@ -104,9 +135,10 @@ app.post('/solve/multialgo', function(req, res) {
 	    req.body.rho,
       req.body.PPS
   	]);
-
+	var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
   	python.stdout.on('data', function (data) {
   		var solved = data.toString()
+		getExternalIP(ip, solved);
     	res.send({solved});
     	console.log({solved});
   	});
@@ -138,6 +170,8 @@ function updateAllData() {
   for (i in symbols)
     update_data(symbols[i]);
 }
+
+
 
 /* updates additional data for all coins */
 function update_data(symbol) {
