@@ -1,13 +1,13 @@
-FILE_OUTPUT = False
+#FILE_OUTPUT = False
 import numpy as np
 import math
 import sys
 
 from scipy.optimize import minimize
-if FILE_OUTPUT:
-    import matplotlib as mpl
-    mpl.use('pgf')
-import matplotlib.pyplot as plt
+#if FILE_OUTPUT:
+#    import matplotlib as mpl
+#    mpl.use('pgf')
+#import matplotlib.pyplot as plt
 #from matplotlib import pyplot as plt
 
 #Globals
@@ -339,7 +339,7 @@ if __name__ =='__main__':
     	rho = float(sys.argv[3])
     	R = float(sys.argv[4])
     	lA = float(sys.argv[5])
-        pps = (sys.argv[6] == 'true')
+    	pps = (sys.argv[6] == 'true')
     	print(solvePools(poolData, rho, R, lA, pps))
 
     elif sys.argv[1] == "multicurr": # multi currencies, single PoW
